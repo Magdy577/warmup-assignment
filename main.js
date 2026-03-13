@@ -1,3 +1,4 @@
+const fs = require("fs")
 function parseAmPmTime(timeStr) {
   const trimmed = timeStr.trim().toLowerCase()
   const [timePart, period] = trimmed.split(/\s+/)
@@ -75,4 +76,108 @@ module.exports = {
   getIdleTime,
   getActiveTime,
   metQuota
+}
+function addShiftRecord(textFile, shiftObj) {
+
+  const content = fs.readFileSync(textFile, "utf8").replace(/\r/g,"")
+  const lines = content.split("\n").filter(l => l.trim() !== "")
+
+  const header = lines[0]
+  const rows = lines.slice(1)
+
+  for (let row of rows) {
+    const parts = row.split(",")
+    if (parts[0] === shiftObj.driverID && parts[2] === shiftObj.date)
+      return {}
+  }
+
+  const shiftDuration = getShiftDuration(shiftObj.startTime, shiftObj.endTime)
+  const idleTime = getIdleTime(shiftObj.startTime, shiftObj.endTime)
+  const activeTime = getActiveTime(shiftDuration, idleTime)
+  const quota = metQuota(shiftObj.date, activeTime)
+
+  const newRow = [
+    shiftObj.driverID,
+    shiftObj.driverName,
+    shiftObj.date,
+    shiftObj.startTime,
+    shiftObj.endTime,
+    shiftDuration,
+    idleTime,
+    activeTime,
+    quota,
+    false
+  ].join(",")
+
+  rows.push(newRow)
+
+  const newFile = [header, ...rows].join("\n")
+  fs.writeFileSync(textFile, newFile)
+
+  return {
+    driverID: shiftObj.driverID,
+    driverName: shiftObj.driverName,
+    date: shiftObj.date,
+    startTime: shiftObj.startTime,
+    endTime: shiftObj.endTime,
+    shiftDuration,
+    idleTime,
+    activeTime,
+    metQuota: quota,
+    hasBonus: false
+  }
+
+}
+function setBonus(textFile, driverID, date, newValue) {
+
+  const content = fs.readFileSync(textFile,"utf8").replace(/\r/g,"")
+  const lines = content.split("\n").filter(l => l.trim() !== "")
+
+  const header = lines[0]
+  const rows = lines.slice(1)
+
+  const updated = rows.map(row => {
+
+    const parts = row.split(",")
+
+    if (parts[0] === driverID && parts[2] === date) {
+      parts[9] = String(newValue)
+    }
+
+    return parts.join(",")
+
+  })
+
+  fs.writeFileSync(textFile,[header,...updated].join("\n"))
+
+}
+function countBonusPerMonth(textFile, driverID, month) {
+
+  const content = fs.readFileSync(textFile,"utf8").replace(/\r/g,"")
+  const lines = content.split("\n").filter(l => l.trim() !== "")
+
+  const rows = lines.slice(1)
+
+  const driverRows = rows.filter(r => r.split(",")[0] === driverID)
+
+  if (driverRows.length === 0)
+    return -1
+
+  const m = Number(month)
+
+  let count = 0
+
+  for (let row of driverRows) {
+
+    const parts = row.split(",")
+
+    const rowMonth = Number(parts[2].split("-")[1])
+
+    if (rowMonth === m && parts[9] === "true")
+      count++
+
+  }
+
+  return count
+
 }
